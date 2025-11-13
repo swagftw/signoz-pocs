@@ -1,0 +1,198 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.39.26.7824",
+      "templateHash": "14265130370943727318"
+    }
+  },
+  "parameters": {
+    "eventHubAuthRuleId": {
+      "type": "string",
+      "metadata": {
+        "description": "The Event Hub auth rule ID where metrics should go"
+      }
+    },
+    "eventHubName": {
+      "type": "string",
+      "defaultValue": "vm-metrics",
+      "metadata": {
+        "description": "Name of the Event Hub"
+      }
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Authorization/policyDefinitions",
+      "apiVersion": "2021-06-01",
+      "name": "auto-configure-vm-diagnostics",
+      "properties": {
+        "displayName": "Auto-configure VM Diagnostic Settings",
+        "description": "Automatically sets up diagnostic settings for any VM",
+        "policyType": "Custom",
+        "mode": "All",
+        "parameters": {
+          "eventHubAuthRuleId": {
+            "type": "String",
+            "metadata": {
+              "displayName": "Event Hub Authorization Rule ID",
+              "description": "Where to send the metrics"
+            }
+          },
+          "eventHubName": {
+            "type": "String",
+            "metadata": {
+              "displayName": "Event Hub Name"
+            }
+          }
+        },
+        "policyRule": {
+          "if": {
+            "field": "type",
+            "equals": "Microsoft.Compute/virtualMachines"
+          },
+          "then": {
+            "effect": "DeployIfNotExists",
+            "details": {
+              "type": "Microsoft.Insights/diagnosticSettings",
+              "roleDefinitionIds": [
+                "/providers/Microsoft.Authorization/roleDefinitions/b24988ac-6180-42a0-ab88-20f7382dd24c"
+              ],
+              "existenceCondition": {
+                "allOf": [
+                  {
+                    "field": "Microsoft.Insights/diagnosticSettings/eventHubAuthorizationRuleId",
+                    "equals": "[[parameters('eventHubAuthRuleId')]"
+                  },
+                  {
+                    "count": {
+                      "field": "Microsoft.Insights/diagnosticSettings/metrics[*]",
+                      "where": {
+                        "allOf": [
+                          {
+                            "field": "Microsoft.Insights/diagnosticSettings/metrics[*].enabled",
+                            "equals": "true"
+                          },
+                          {
+                            "field": "Microsoft.Insights/diagnosticSettings/metrics[*].category",
+                            "equals": "AllMetrics"
+                          }
+                        ]
+                      }
+                    },
+                    "greaterOrEquals": 1
+                  }
+                ]
+              },
+              "deployment": {
+                "properties": {
+                  "mode": "Incremental",
+                  "template": {
+                    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+                    "contentVersion": "1.0.0.0",
+                    "parameters": {
+                      "vmName": {
+                        "type": "string"
+                      },
+                      "location": {
+                        "type": "string"
+                      },
+                      "eventHubAuthRuleId": {
+                        "type": "string"
+                      },
+                      "eventHubName": {
+                        "type": "string"
+                      }
+                    },
+                    "resources": [
+                      {
+                        "type": "Microsoft.Compute/virtualMachines/providers/diagnosticSettings",
+                        "apiVersion": "2021-05-01-preview",
+                        "name": "[[concat(parameters('vmName'), '/Microsoft.Insights/send-to-eventhub')]",
+                        "location": "[[parameters('location')]",
+                        "properties": {
+                          "eventHubAuthorizationRuleId": "[[parameters('eventHubAuthRuleId')]",
+                          "eventHubName": "[[parameters('eventHubName')]",
+                          "metrics": [
+                            {
+                              "category": "AllMetrics",
+                              "enabled": true
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  },
+                  "parameters": {
+                    "vmName": {
+                      "value": "[[field('name')]"
+                    },
+                    "location": {
+                      "value": "[[field('location')]"
+                    },
+                    "eventHubAuthRuleId": {
+                      "value": "[[parameters('eventHubAuthRuleId')]"
+                    },
+                    "eventHubName": {
+                      "value": "[[parameters('eventHubName')]"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2021-06-01",
+      "name": "assign-vm-diagnostics-policy",
+      "properties": {
+        "displayName": "Auto VM Diagnostics to Event Hub",
+        "description": "Automatically configure diagnostic settings for all VMs",
+        "policyDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/policyDefinitions', 'auto-configure-vm-diagnostics')]",
+        "parameters": {
+          "eventHubAuthRuleId": {
+            "value": "[parameters('eventHubAuthRuleId')]"
+          },
+          "eventHubName": {
+            "value": "[parameters('eventHubName')]"
+          }
+        }
+      },
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "location": "[deployment().location]",
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Authorization/policyDefinitions', 'auto-configure-vm-diagnostics')]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(subscription().id, 'assign-vm-diagnostics-policy', 'Contributor')]",
+      "properties": {
+        "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c')]",
+        "principalId": "[reference(subscriptionResourceId('Microsoft.Authorization/policyAssignments', 'assign-vm-diagnostics-policy'), '2021-06-01', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Authorization/policyAssignments', 'assign-vm-diagnostics-policy')]"
+      ]
+    }
+  ],
+  "outputs": {
+    "policyDefinitionId": {
+      "type": "string",
+      "value": "[subscriptionResourceId('Microsoft.Authorization/policyDefinitions', 'auto-configure-vm-diagnostics')]"
+    },
+    "policyAssignmentId": {
+      "type": "string",
+      "value": "[subscriptionResourceId('Microsoft.Authorization/policyAssignments', 'assign-vm-diagnostics-policy')]"
+    }
+  }
+}

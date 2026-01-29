@@ -1,0 +1,268 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.40.2.10011",
+      "templateHash": "14763809887615544458"
+    }
+  },
+  "parameters": {
+    "location": {
+      "type": "string"
+    },
+    "signozApiKey": {
+      "type": "string"
+    },
+    "signozApiUrl": {
+      "type": "string"
+    },
+    "signozIngestionUrl": {
+      "type": "string"
+    },
+    "signozIngestionKey": {
+      "type": "string"
+    },
+    "signozCloudIntegrationAccountId": {
+      "type": "string"
+    },
+    "rgName": {
+      "type": "string",
+      "defaultValue": "signoz-integration-rg"
+    },
+    "containerEnvName": {
+      "type": "string",
+      "defaultValue": "signoz-integration-agent-env"
+    },
+    "deploymentEnv": {
+      "type": "string",
+      "defaultValue": "production"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2021-04-01",
+      "name": "[parameters('rgName')]",
+      "location": "[parameters('location')]"
+    },
+    {
+      "type": "Microsoft.Authorization/roleDefinitions",
+      "apiVersion": "2022-04-01",
+      "name": "[guid('signoz-automation-role', subscription().id)]",
+      "properties": {
+        "roleName": "SigNozAutomationAgent",
+        "description": "Permissions for SigNoz Agent to manage monitoring and workload stacks",
+        "permissions": [
+          {
+            "actions": [
+              "Microsoft.Resources/deployments/*",
+              "Microsoft.Resources/deploymentStacks/*",
+              "Microsoft.Authorization/policyAssignments/*",
+              "Microsoft.Authorization/policyDefinitions/*",
+              "Microsoft.Authorization/roleAssignments/write",
+              "Microsoft.Insights/diagnosticSettings/*",
+              "*/read"
+            ]
+          }
+        ],
+        "assignableScopes": [
+          "[subscription().id]"
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "signoz-agent-infra",
+      "resourceGroup": "[parameters('rgName')]",
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "containerEnvName": {
+            "value": "[parameters('containerEnvName')]"
+          },
+          "customRoleId": {
+            "value": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', guid('signoz-automation-role', subscription().id))]"
+          },
+          "signozApiKey": {
+            "value": "[parameters('signozApiKey')]"
+          },
+          "signozApiUrl": {
+            "value": "[parameters('signozApiUrl')]"
+          },
+          "signozIngestionUrl": {
+            "value": "[parameters('signozIngestionUrl')]"
+          },
+          "signozIngestionKey": {
+            "value": "[parameters('signozIngestionKey')]"
+          },
+          "signozCloudIntegrationAccountId": {
+            "value": "[parameters('signozCloudIntegrationAccountId')]"
+          },
+          "deploymentEnv": {
+            "value": "[parameters('deploymentEnv')]"
+          }
+        },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "metadata": {
+            "_generator": {
+              "name": "bicep",
+              "version": "0.40.2.10011",
+              "templateHash": "596781290167987642"
+            }
+          },
+          "parameters": {
+            "location": {
+              "type": "string"
+            },
+            "containerEnvName": {
+              "type": "string"
+            },
+            "customRoleId": {
+              "type": "string"
+            },
+            "signozApiKey": {
+              "type": "string"
+            },
+            "signozApiUrl": {
+              "type": "string"
+            },
+            "signozIngestionUrl": {
+              "type": "string"
+            },
+            "signozIngestionKey": {
+              "type": "string"
+            },
+            "signozCloudIntegrationAccountId": {
+              "type": "string"
+            },
+            "integrationConfigSyncPeriodSeconds": {
+              "type": "string",
+              "defaultValue": "60"
+            },
+            "deploymentEnv": {
+              "type": "string"
+            }
+          },
+          "resources": [
+            {
+              "type": "Microsoft.App/managedEnvironments",
+              "apiVersion": "2023-05-01",
+              "name": "[parameters('containerEnvName')]",
+              "location": "[parameters('location')]",
+              "properties": {}
+            },
+            {
+              "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+              "apiVersion": "2023-01-31",
+              "name": "signoz-integration-agent-identity",
+              "location": "[parameters('location')]"
+            },
+            {
+              "type": "Microsoft.Authorization/roleAssignments",
+              "apiVersion": "2022-04-01",
+              "name": "[guid(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'signoz-integration-agent-identity'), parameters('customRoleId'), subscription().id)]",
+              "properties": {
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'signoz-integration-agent-identity'), '2023-01-31').principalId]",
+                "roleDefinitionId": "[parameters('customRoleId')]",
+                "principalType": "ServicePrincipal"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'signoz-integration-agent-identity')]"
+              ]
+            },
+            {
+              "type": "Microsoft.App/containerApps",
+              "apiVersion": "2023-05-01",
+              "name": "signoz-integration-agent",
+              "location": "[parameters('location')]",
+              "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                  "[format('{0}', resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'signoz-integration-agent-identity'))]": {}
+                }
+              },
+              "properties": {
+                "managedEnvironmentId": "[resourceId('Microsoft.App/managedEnvironments', parameters('containerEnvName'))]",
+                "template": {
+                  "containers": [
+                    {
+                      "name": "agent",
+                      "image": "swagftw/cloud-integration-agent:v0.1.1",
+                      "resources": {
+                        "cpu": "0.25",
+                        "memory": "0.5Gi"
+                      },
+                      "env": [
+                        {
+                          "name": "CLOUD_PROVIDER",
+                          "value": "azure"
+                        },
+                        {
+                          "name": "COLLECTOR_ROLE_ID",
+                          "value": "[parameters('customRoleId')]"
+                        },
+                        {
+                          "name": "SIGNOZ_API_URL",
+                          "value": "[parameters('signozApiUrl')]"
+                        },
+                        {
+                          "name": "SIGNOZ_API_KEY",
+                          "value": "[parameters('signozApiKey')]"
+                        },
+                        {
+                          "name": "INGESTION_URL",
+                          "value": "[parameters('signozIngestionUrl')]"
+                        },
+                        {
+                          "name": "INGESTION_KEY",
+                          "value": "[parameters('signozIngestionKey')]"
+                        },
+                        {
+                          "name": "SIGNOZ_CLOUD_INTEGRATION_ACCOUNT_ID",
+                          "value": "[parameters('signozCloudIntegrationAccountId')]"
+                        },
+                        {
+                          "name": "INTEGRATION_CONFIG_SYNC_PERIOD_SECONDS",
+                          "value": "[parameters('integrationConfigSyncPeriodSeconds')]"
+                        },
+                        {
+                          "name": "DEPLOYMENT_ENV",
+                          "value": "[parameters('deploymentEnv')]"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'signoz-integration-agent-identity')]",
+                "[resourceId('Microsoft.App/managedEnvironments', parameters('containerEnvName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "agentPrincipalId": {
+              "type": "string",
+              "value": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', 'signoz-integration-agent-identity'), '2023-01-31').principalId]"
+            }
+          }
+        }
+      },
+      "dependsOn": [
+        "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', guid('signoz-automation-role', subscription().id))]",
+        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', parameters('rgName'))]"
+      ]
+    }
+  ]
+}
